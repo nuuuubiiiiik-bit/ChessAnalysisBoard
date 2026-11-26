@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шахматы — доска на двоих</title>
+<style>
+  :root{ --bg:#0d1117; --panel:rgba(22,27,38,.95); --line:#2b3548; --text:#e6edf3;
+    --muted:#8b98ab; --accent:#58a6ff; --light:#b8956a; --dark:#6d4c33; --gold:#e3b341;
+    --red:#f85149; }
+  *{ margin:0; padding:0; box-sizing:border-box; user-select:none; }
+  html,body{ width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text);
+    font-family:"Segoe UI", system-ui, Arial, sans-serif; }
+  body{ display:flex; align-items:center; justify-content:center; gap:20px; padding:14px; }
+
+  /* ---------- левая панель: фигуры ---------- */
+  #leftPanel{ width:250px; flex:0 0 auto; display:flex; flex-direction:column; gap:12px; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; }
+  .card h3{ font-size:12.5px; letter-spacing:1px; color:var(--muted); text-transform:uppercase;
+    margin-bottom:10px; font-weight:700; }
+  #palette{ display:grid; grid-template-rows:repeat(2, 1fr); grid-template-columns:repeat(6,1fr); gap:6px; }
+  .pal{ aspect-ratio:0.82; border-radius:9px; border:1px solid var(--line); background:#10151f;
+    display:flex; align-items:center; justify-content:center; font-size:30px; cursor:grab; }
+  .pal.w{ color:#f4f1ea; text-shadow:0 0 2px #1b1f27, 0 1px 0 #1b1f27; }
+  .pal.b{ color:#23272f; text-shadow:0 0 2px #cfd6e2, 0 1px 0 #cfd6e2; }
+  .pal.sel{ outline:2px solid var(--accent); outline-offset:-2px; background:#1d2a42; }
+  .pal:hover{ background:#1b2334; }
+  .hint{ font-size:11.5px; color:var(--muted); margin-top:10px; line-height:1.65; }
+  .hint b{ background:#26314a; color:#fff; border-radius:5px; padding:1px 6px; font-weight:700; }
+  #delZone{ border:1px dashed var(--line); border-radius:10px; padding:9px;
+    text-align:center; font-size:12px; color:var(--muted); transition:all .12s; }
+  #delZone.hot{ border-color:var(--red); color:#ffb1ac; background:rgba(248,81,73,.08); }
+
+  /* ---------- доска ---------- */
+  #boardCol{ display:flex; flex-direction:column; gap:6px; align-items:center; flex:0 1 auto; }
+  #boardRow{ display:flex; gap:5px; align-items:stretch; }
+  #ranks{ display:grid; grid-template-rows:repeat(8,1fr); width:20px; }
+  #files{ display:grid; grid-template-columns:repeat(8,1fr); height:20px; margin-left:25px; width:var(--bw); }
+  #ranks span, #files span{ display:flex; align-items:center; justify-content:center;
+    font-size:12px; color:var(--muted); font-weight:600; }
+  #board{
+    position:relative; width:var(--bw); height:var(--bw);
+    display:grid; grid-template:repeat(8,1fr)/repeat(8,1fr);
+    border-radius:10px; overflow:hidden; box-shadow:0 15px 45px rgba(0,0,0,.5);
+    border:1px solid var(--line); touch-action:none;
+  }
+  .sq{ position:relative; }
+  .sq.light{ background:var(--light); } .sq.dark{ background:var(--dark); }
+  .sq.sel::after{ content:''; position:absolute; inset:0; background:rgba(88,166,255,.45); }
+  .sq.hint::after{ content:''; position:absolute; inset:0; background:rgba(63,185,80,.35); }
+  .sq.hint.occ::after{ content:''; position:absolute; inset:6%; border-radius:50%;
+    border:4px solid rgba(63,185,80,.85); background:none; }
+  #pieceLayer{ position:absolute; inset:0; pointer-events:none; z-index:5; }
+  .piece{ position:absolute; width:12.5%; height:12.5%; display:flex; align-items:center;
+    justify-content:center; font-size:var(--pcfs); line-height:1; cursor:grab;
+    pointer-events:auto; touch-action:none; transition:left .13s ease, top .13s ease; z-index:2; }
+  .piece.dragging{ transition:none; z-index:20; cursor:grabbing; }
+  .piece.w{ color:#f4f1ea; text-shadow:0 0 2px #1b1f27, 0 1px 0 #1b1f27, 0 2px 3px rgba(0,0,0,.55); }
+  .piece.b{ color:#23272f; text-shadow:0 0 2px #cfd6e2, 0 2px 3px rgba(0,0,0,.35); }
+  .piece:hover{ filter:brightness(1.15); }
+  #ghost{ position:fixed; pointer-events:none; z-index:99; font-size:46px;
+    transform:translate(-50%,-50%); opacity:.9; display:none; line-height:1; }
+  #ghost.w{ color:#f4f1ea; text-shadow:0 0 2px #1b1f27, 0 1px 0 #1b1f27; }
+  #ghost.b{ color:#23272f; text-shadow:0 0 2px #cfd6e2; }
+
+  /* ---------- правая панель ---------- */
+  #rightPanel{ width:300px; flex:0 0 auto; display:flex; flex-direction:column; gap:12px; }
+  .btnrow{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  button{ padding:10px 10px; border-radius:10px; border:1px solid var(--line); cursor:pointer;
+    background:#212b3b; color:var(--text); font-weight:700; font-size:12.5px; }
+  button:hover{ border-color:var(--accent); }
+  #fen{ width:100%; background:#10151f; color:var(--text); border:1px solid var(--line);
+    border-radius:9px; padding:9px 10px; font-size:11.5px; font-family:Consolas, monospace;
+    user-select:text; }
+  label.tog{ display:flex; gap:8px; align-items:center; font-size:13px; cursor:pointer; }
+  #counts{ display:flex; gap:16px; font-size:13px; margin-top:10px; }
+  #counts b{ color:var(--gold); }
+
+  /* ---------- телефон: вертикальная раскладка ---------- */
+  @media (max-width: 980px){
+    html,body{ overflow:auto; height:auto; min-height:100%; }
+    body{ flex-direction:column; gap:10px; padding:8px; align-items:center; }
+    #leftPanel, #rightPanel{ width:100%; max-width:560px; }
+    #boardCol{ flex:0 0 auto; }
+  }
+</style>
+</head>
+<body>
+
+<div id="leftPanel">
+  <div class="card">
+    <h3>Фигуры</h3>
+    <div id="palette"></div>
+    <div class="hint">
+      <b>ЛКМ</b> — таскать фигуры и ставить куда угодно (ровно по клеткам)<br>
+      <b>Клик</b> по фигуре — подсветить возможные ходы<br>
+      <b>ПКМ</b> по фигуре — удалить<br>
+      Клик по палитре = «штамп»: ставь выбранную фигуру кликами
+    </div>
+  </div>
+  <div id="delZone">🗑 перетащи сюда, чтобы удалить</div>
+</div>
+
+<div id="boardCol">
+  <div id="boardRow">
+    <div id="ranks"></div>
+    <div id="board"><div id="pieceLayer"></div></div>
+  </div>
+  <div id="files"></div>
+</div>
+
+<div id="rightPanel">
+  <div class="card">
+    <h3>Доска</h3>
+    <div class="btnrow">
+      <button id="btnStart">Начальная позиция</button>
+      <button id="btnClear">Очистить</button>
+      <button id="btnFlip">Отразить доску</button>
+      <button id="btnCopy">Копировать FEN</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3>FEN</h3>
+    <input id="fen" spellcheck="false" placeholder="FEN-строка позиции...">
+    <div class="btnrow" style="margin-top:8px">
+      <button id="btnApplyFen">Применить FEN</button>
+      <button id="btnFillFen">Вписать текущую</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Анализ</h3>
+    <label class="tog"><input type="checkbox" id="togMoves" checked> Показывать возможные ходы</label>
+    <div id="counts"></div>
+  </div>
+</div>
+
+<div id="ghost"></div>
+<div id="ver" style="position:fixed; right:10px; bottom:6px; font-size:10px; color:#55607a; z-index:200;">v6 mobile</div>
+<div id="errBanner" style="display:none; position:fixed; left:0; right:0; top:0; z-index:300;
+  background:#5a1d1d; color:#ffd7d5; padding:8px 14px; font-size:12px; font-family:Consolas, monospace;"></div>
+<script>
+window.addEventListener('error', e => {
+  const b = document.getElementById('errBanner');
+  if (b){ b.style.display = 'block'; b.textContent = 'JS ОШИБКА: ' + e.message + ' (line ' + e.lineno + ')'; }
+});
+</script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const GLYPH = { K:'♚', Q:'♛', R:'♜', B:'♝', N:'♞', P:'♟' };
+const NICE  = { K:'Король', Q:'Ферзь', R:'Ладья', B:'Слон', N:'Конь', P:'Пешка' };
+const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+
+// ---------- состояние ----------
+let board = fenToBoard(START);
+let flip = false;
+let selected = null;
+let stampType = null;
+let pieces = [];            // {id, r, f, color, type, el}
+let nextId = 1;
+
+function fenToBoard(fen){
+  const rows = fen.split(' ')[0].split('/');
+  if (rows.length !== 8) return null;
+  const b = Array.from({length:8}, () => Array(8).fill(null));
+  for (let r = 0; r < 8; r++){
+    let f = 0;
+    for (const ch of rows[r]){
+      if (/\d/.test(ch)){ f += +ch; if (f > 8) return null; continue; }
+      if (f > 7 || !'KQRBNPkqrbnp'.includes(ch)) return null;
+      b[r][f++] = { c: ch === ch.toUpperCase() ? 'w' : 'b', t: ch.toUpperCase() };
+    }
+    if (f !== 8) return null;
+  }
+  return b;
+}
+function boardToFen(){
+  return board.map(row => {
+    let s = '', empty = 0;
+    for (const cell of row){
+      if (!cell){ empty++; continue; }
+      if (empty){ s += empty; empty = 0; }
+      s += cell.c === 'w' ? cell.t : cell.t.toLowerCase();
+    }
+    if (empty) s += empty;
+    return s;
+  }).join('/');
+}
+
+// ---------- доска ----------
+const boardEl = $('board'), layer = $('pieceLayer');
+const sqEls = Array.from({length:8}, () => Array(8));
+for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++){
+  const d = document.createElement('div');
+  d.className = 'sq' + ((r + f) % 2 === 0 ? ' light' : ' dark');
+  boardEl.appendChild(d);
+  sqEls[r][f] = d;
+}
+
+const FILES = 'abcdefgh';
+function viewRF(r, f){ return flip ? [7 - r, 7 - f] : [r, f]; }
+function stateRF(vr, vf){ return flip ? [7 - vr, 7 - vf] : [vr, vf]; }
+
+function layout(){
+  const narrow = innerWidth <= 980;
+  const size = narrow
+    ? Math.max(280, Math.min(innerHeight - 300, innerWidth - 40, 700))
+    : Math.min(innerHeight - 90, innerWidth - 660, 700);
+  document.documentElement.style.setProperty('--bw', size + 'px');
+  document.documentElement.style.setProperty('--pcfs', (size / 8 * 0.8) + 'px');
+}
+addEventListener('resize', layout);
+
+function renderLabels(){
+  const rk = $('ranks'), fl = $('files');
+  rk.innerHTML = ''; fl.innerHTML = '';
+  for (let i = 0; i < 8; i++){
+    const a = document.createElement('span');
+    a.textContent = flip ? i + 1 : 8 - i;
+    rk.appendChild(a);
+    const b = document.createElement('span');
+    b.textContent = flip ? FILES[7 - i] : FILES[i];
+    fl.appendChild(b);
+  }
+}
+
+function renderSquares(){
+  for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++){
+    sqEls[r][f].className = 'sq' + ((r + f) % 2 === 0 ? ' light' : ' dark');
+  }
+  if (selected){
+    sqEls[selected.r][selected.f].classList.add('sel');
+    if ($('togMoves').checked){
+      for (const [mr, mf] of movesFor(selected.r, selected.f)){
+        sqEls[mr][mf].classList.add('hint');
+        if (board[mr][mf]) sqEls[mr][mf].classList.add('occ');
+      }
+    }
+  }
+}
+
+// ---------- фигуры ----------
+function applyPos(p){
+  const [vr, vf] = viewRF(p.r, p.f);
+  p.el.style.position = '';
+  p.el.style.width = p.el.style.height = '';
+  p.el.style.transform = '';
+  p.el.style.left = (vf * 12.5) + '%';
+  p.el.style.top  = (vr * 12.5) + '%';
+}
+function syncPieces(){
+  for (const p of pieces){
+    const cell = board[p.r]?.[p.f];
+    if (!cell || cell.c !== p.color || cell.t !== p.type){ p.el.remove(); p.dead = true; }
+  }
+  pieces = pieces.filter(p => !p.dead);
+  for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++){
+    const cell = board[r][f];
+    if (!cell) continue;
+    if (pieces.some(p => p.r === r && p.f === f && p.color === cell.c && p.type === cell.t)) continue;
+    const p = { id: nextId++, r, f, color: cell.c, type: cell.t };
+    p.el = document.createElement('div');
+    p.el.className = 'piece ' + p.color;
+    p.el.textContent = GLYPH[p.type];
+    applyPos(p);
+    layer.appendChild(p.el);
+    pieces.push(p);
+  }
+  for (const p of pieces) applyPos(p);
+  updateCounts();
+}
+function updateCounts(){
+  let w = 0, b = 0;
+  for (const row of board) for (const c of row){ if (c){ c.c === 'w' ? w++ : b++; } }
+  $('counts').innerHTML = `<span>Белых: <b>${w}</b></span><span>Чёрных: <b>${b}</b></span>`;
+}
+function refreshFen(){ $('fen').value = boardToFen(); }
+
+// ---------- ходы (генерация для подсветки) ----------
+const DIRS_ROOK = [[-1,0],[1,0],[0,-1],[0,1]];
+const DIRS_BISH = [[-1,-1],[-1,1],[1,-1],[1,1]];
+function movesFor(r, f){
+  const p = board[r][f]; if (!p) return [];
+  const out = [];
+  const can = (rr, ff) => rr >= 0 && rr < 8 && ff >= 0 && ff < 8;
+  const tryStep = (rr, ff) => {
+    if (!can(rr, ff)) return 'stop';
+    const t = board[rr][ff];
+    if (!t){ out.push([rr, ff]); return 'cont'; }
+    if (t.c !== p.c) out.push([rr, ff]);
+    return 'stop';
+  };
+  if (p.t === 'K'){
+    for (const [dr, df] of [...DIRS_ROOK, ...DIRS_BISH]) tryStep(r + dr, f + df);
+  } else if (p.t === 'N'){
+    for (const [dr, df] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) tryStep(r + dr, f + df);
+  } else if (p.t === 'Q'){
+    for (const dirs of [DIRS_ROOK, DIRS_BISH])
+      for (const [dr, df] of dirs) for (let s = 1; s < 8; s++) if (tryStep(r + dr*s, f + df*s) !== 'cont') break;
+  } else if (p.t === 'R'){
+    for (const [dr, df] of DIRS_ROOK) for (let s = 1; s < 8; s++) if (tryStep(r + dr*s, f + df*s) !== 'cont') break;
+  } else if (p.t === 'B'){
+    for (const [dr, df] of DIRS_BISH) for (let s = 1; s < 8; s++) if (tryStep(r + dr*s, f + df*s) !== 'cont') break;
+  } else if (p.t === 'P'){
+    const fwd = p.c === 'w' ? -1 : 1;
+    const start = p.c === 'w' ? 6 : 1;
+    if (can(r + fwd, f) && !board[r + fwd][f]){
+      out.push([r + fwd, f]);
+      if (r === start && !board[r + 2*fwd][f]) out.push([r + 2*fwd, f]);
+    }
+    for (const df of [-1, 1]){
+      const rr = r + fwd, ff = f + df;
+      if (can(rr, ff) && board[rr][ff] && board[rr][ff].c !== p.c) out.push([rr, ff]);
+    }
+  }
+  return out;
+}
+
+// ---------- перетаскивание (обработчики на window — работают всегда) ----------
+let dragPiece = null, dragMoved = false;
+let palDrag = null;
+let downAt = { x: 0, y: 0 };
+
+function squareFromEvent(e){
+  const rect = boardEl.getBoundingClientRect();
+  const inside = e.clientX >= rect.left && e.clientX <= rect.right &&
+                 e.clientY >= rect.top && e.clientY <= rect.bottom;
+  const vf = Math.max(0, Math.min(7, Math.floor((e.clientX - rect.left) / (rect.width / 8))));
+  const vr = Math.max(0, Math.min(7, Math.floor((e.clientY - rect.top) / (rect.height / 8))));
+  const [r, f] = stateRF(vr, vf);
+  return { r, f, inside };
+}
+function beginDragPiece(p, e){
+  dragPiece = p; dragMoved = false;
+  downAt = { x: e.clientX, y: e.clientY };
+  p.el.classList.add('dragging');
+  const cell = boardEl.clientWidth / 8;
+  p.el.style.position = 'fixed';
+  p.el.style.width = p.el.style.height = cell + 'px';
+  p.el.style.transform = 'translate(-50%,-50%)';
+  p.el.style.left = e.clientX + 'px';
+  p.el.style.top = e.clientY + 'px';
+}
+
+layer.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.piece');
+  if (!el || e.button !== 0) return;
+  e.preventDefault();
+  const p = pieces.find(x => x.el === el);
+  if (p) beginDragPiece(p, e);
+});
+
+addEventListener('pointermove', e => {
+  if (dragPiece){
+    if (!dragMoved && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 4) return;
+    dragMoved = true;
+    dragPiece.el.style.left = e.clientX + 'px';
+    dragPiece.el.style.top = e.clientY + 'px';
+    $('delZone').classList.toggle('hot', !squareFromEvent(e).inside);
+  } else if (palDrag){
+    dragMoved = dragMoved || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 6;
+    if (dragMoved){
+      ghost.style.display = 'block';
+      ghost.style.left = e.clientX + 'px';
+      ghost.style.top = e.clientY + 'px';
+    }
+  }
+});
+
+addEventListener('pointerup', e => {
+  if (dragPiece){
+    const p = dragPiece;
+    dragPiece = null;
+    const wasMoved = dragMoved; dragMoved = false;
+    $('delZone').classList.remove('hot');
+    const t = squareFromEvent(e);
+    const toTrash = !t.inside;
+    if (wasMoved){
+      if (toTrash){
+        board[p.r][p.f] = null;
+      } else {
+        board[p.r][p.f] = null;
+        board[t.r][t.f] = { c: p.color, t: p.type };
+        p.r = t.r; p.f = t.f;
+        suppressNextClick();
+      }
+      selected = null;
+      syncPieces();          // вернёт фигуру ровно на сетку с анимацией
+      renderSquares(); refreshFen();
+    } else {
+      applyPos(p);           // возврат на место при простом клике
+      // клик по фигуре = показать ходы
+      selected = (selected && selected.r === p.r && selected.f === p.f) ? null : { r: p.r, f: p.f };
+      renderSquares();
+    }
+    return;
+  }
+  if (palDrag){
+    const { c, t: tp } = palDrag;
+    palDrag = null;
+    ghost.style.display = 'none';
+    const wasMoved = dragMoved; dragMoved = false;
+    if (wasMoved){
+      const t = squareFromEvent(e);
+      if (t.inside){
+        board[t.r][t.f] = { c, t: tp };
+        selected = null;
+        syncPieces(); renderSquares(); refreshFen();
+      }
+    }
+  }
+});
+
+let clickGuard = false;
+function suppressNextClick(){ clickGuard = true; setTimeout(() => { clickGuard = false; }, 0); }
+layer.addEventListener('click', () => { /* выбор фигуры исполняется в pointerup */ });
+boardEl.addEventListener('click', e => {
+  if (clickGuard) return;
+  const t = squareFromEvent(e);
+  if (stampType){
+    board[t.r][t.f] = { c: stampType.c, t: stampType.t };
+    selected = null;
+    syncPieces(); renderSquares(); refreshFen();
+  } else {
+    selected = null;     // клик по пустой клетке сбрасывает подсветку
+    renderSquares();
+  }
+});
+boardEl.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const t = squareFromEvent(e);
+  if (board[t.r] && board[t.r][t.f]){
+    board[t.r][t.f] = null;
+    selected = null;
+    syncPieces(); renderSquares(); refreshFen();
+  }
+});
+
+// ---------- палитра ----------
+(function buildPalette(){
+  const wrap = $('palette');
+  for (const c of ['w', 'b']) for (const t of ['K','Q','R','B','N','P']){
+    const d = document.createElement('div');
+    d.className = 'pal ' + c;
+    d.title = NICE[t] + (c === 'w' ? ' (белые)' : ' (чёрные)');
+    d.textContent = GLYPH[t];
+    d.addEventListener('click', () => {
+      if (stampType && stampType.c === c && stampType.t === t){ stampType = null; }
+      else stampType = { c, t };
+      selected = null;
+      [...wrap.children].forEach(x => x.classList.remove('sel'));
+      if (stampType) d.classList.add('sel');
+      renderSquares();
+    });
+    d.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      downAt = { x: e.clientX, y: e.clientY };
+      palDrag = { c, t };
+      dragMoved = false;
+      ghost.className = c;
+      ghost.textContent = GLYPH[t];
+    });
+    wrap.appendChild(d);
+  }
+})();
+
+// ---------- кнопки ----------
+$('btnStart').addEventListener('click', () => {
+  board = fenToBoard(START); selected = null;
+  syncPieces(); renderSquares(); refreshFen();
+});
+$('btnClear').addEventListener('click', () => {
+  board = Array.from({length:8}, () => Array(8).fill(null));
+  selected = null; syncPieces(); renderSquares(); refreshFen();
+});
+$('btnFlip').addEventListener('click', () => {
+  flip = !flip; renderLabels();
+  for (const p of pieces) applyPos(p);
+  renderSquares();
+});
+$('btnCopy').addEventListener('click', async () => {
+  const fen = boardToFen();
+  try { await navigator.clipboard.writeText(fen); $('btnCopy').textContent = 'Скопировано ✓'; }
+  catch(e){ $('fen').value = fen; $('fen').select(); $('btnCopy').textContent = 'В поле ↓ Ctrl+C'; }
+  setTimeout(() => { $('btnCopy').textContent = 'Копировать FEN'; }, 1500);
+});
+$('btnApplyFen').addEventListener('click', () => {
+  const v = $('fen').value.trim();
+  if (!v) return;
+  const test = fenToBoard(v);
+  if (!test){
+    $('fen').style.borderColor = 'var(--red)';
+    setTimeout(() => { $('fen').style.borderColor = ''; }, 900);
+    return;
+  }
+  board = test; selected = null; syncPieces(); renderSquares(); refreshFen();
+});
+$('btnFillFen').addEventListener('click', () => { refreshFen(); $('fen').select(); });
+$('togMoves').addEventListener('change', renderSquares);
+
+// ---------- старт: позиция сразу на доске ----------
+layout();
+renderLabels();
+syncPieces();
+renderSquares();
+refreshFen();
+setTimeout(layout, 0);
+})();
+</script>
+</body>
+</html>
